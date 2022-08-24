@@ -201,3 +201,122 @@ let cancellableSink = publisher
 
 
 <h2>3. Advanced Concepts</h2>
+
+<h3>3.1 Manage threads with schedulers</h3>
+
+​	Schedulers allow you to orchestrate where and when to publish, and knowing how to queue your upstream publishers, or downstream subscription streams, whether they should be processing in the background, in your main thread, sequence serially or concurrently. When using Combine to update your application’s UI elements, it is crucial you optimize your streams to use the main thread, but to also not degrade the user experiences.
+
+```swift
+let publisher = URLSession.shared.dataTaskPublisher(for: url!)
+    .map { $0.data }
+    .decode(type: [Post].self, decoder: JSONDecoder())
+    .receive(on: ImmediateScheduler.shared)
+
+let cancellableSink = publisher
+    .subscribe(on: queue)
+    //.receive(on: DispatchQueue.global())
+    .sink(receiveCompletion: { completion in
+        print("Subscriber: On main thread?: \(Thread.current.isMainThread)")
+        print("Subscriber: thread info: \(Thread.current)")
+    }, receiveValue: { value in
+        print("Subscriber: On main thread?: \(Thread.current.isMainThread)")
+        print("Subscriber: thread info: \(Thread.current)")
+    })
+```
+
+
+
+<h3>3.2 Work with custom publishers and subscribers</h3>
+
+```swift
+extension Publisher{
+    
+    func isPrimeInteger<T: BinaryInteger>() -> Publishers
+        .CompactMap<Self, T> where Output == T {
+            compactMap{self.isPrime($0)}
+    }
+  // func isPrime<T: BinaryInteger>(_ n: T) -> T? { ... }
+}
+
+let numbers:[Int] = [1, 2, 3, 4, 5, 6, 7, 8, 9]
+numbers
+    .publisher
+    .isPrimeInteger()
+    .sink { print($0) }
+```
+
+
+
+<h3>3.3 Throttle publisher data with backpressure</h3>
+
+```swift
+class CitySubscriber: Subscriber {
+  //Tells the subscriber that we have successfully subscribed and may request items and it can send values. We enter how many values we want to receive from the publisher.
+   func receive(subscription: Subscription) {
+        subscription.request(.max(2))
+     //subscription.request(.unlimited)
+   }
+  //Tells the subscriber that the publisher has produced an element, and we can use this method to output the results, and returns the requested number of items, sent to a publisher from a subscriber via the subscription.
+   func receive(_ input: String) -> Subscribers.Demand {
+        print("City: \(input)")
+        return .none
+   }
+  //Tells the subscriber that the publisher has completed publishing, either normally or with an error
+   func receive(completion: Subscribers.Completion<Never>) {
+        print("Subscription \(completion)")
+   }
+}
+
+let citySubscription = CitySubscriber()
+cityPublisher.subscribe(citySubscription)
+```
+
+
+
+<h3>3.4 Abstract Combine implementations with type erasures</h3>
+
+```swift
+let url = URL(string: "https://jsonplaceholder.typicode.com/posts")
+let publisher = URLSession.shared.dataTaskPublisher(for: url!)
+    .map {$0.data}
+    .decode(type: [Post].self, decoder: JSONDecoder())
+//(1) Add `.eraseToAnyPublisher()`
+    .eraseToAnyPublisher()
+```
+
+
+
+<h3>3.5 Leverage the Combine advanced operators</h3>
+
+Operators wich can be used (filtering, aggregating and demanding...)
+
+```swift
+let numbers = (1...20)
+    .publisher
+
+let numbersTwo = (21...40)
+    .publisher
+
+let words = (21...40)
+		.compactMap { String($0) }
+    .publisher
+
+let cancellableSink = numbers
+    //.filter {$0 % 2 == 0}
+    //.compactMap{value in Float(value)}
+    //.first()
+    //.last(where: {$0 < 20 })
+    //.dropFirst()
+    //.drop(while: {$0 % 3 == 0} )
+    //.prefix(4)
+    //.prefix(while: {$0 < 5})
+    //.append(21,22,23)
+    //.prepend(21,22,23)
+    //.merge(with: numbersTwo)
+    //.combineLatest(words)
+    //.zip(numbersTwo)
+    //.collect()
+    //.throttle(for: .seconds(2), scheduler: DispatchQueue.main, latest: true)
+    .sink {print($0)}
+```
+
