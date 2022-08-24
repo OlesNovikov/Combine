@@ -103,11 +103,100 @@ future.sink(receiveCompletion: { print($0) },
 
 <h3>2.1 Call REST API with DataTaskPublisher</h3>
 
+```swift
+//(1) Create a `dataTaskPublisher`
+let url = URL(string: "https://jsonplaceholder.typicode.com/posts")
+let publisher = URLSession.shared.dataTaskPublisher(for: url!)
+    .map {$0.data}
+    .decode(type: [Post].self, decoder: JSONDecoder())
+
+//(2) Subscribe to the publisher
+let cancellableSink = publisher
+    .sink(receiveCompletion: { completion in
+        print(String(describing: completion))
+    }, receiveValue: { value in
+        print("returned value \(value)")
+    })
+```
+
 
 
 <h3>2.2 Handle errors with Combine</h3>
 
+```swift
+enum APIError: Error{
+    case networkError(error: String)
+    case responseError(error: String)
+    case unknownError
+}
+
+//(1) Create a `dataTaskPublisher`
+let url = URL(string: "https://jsonplaceholder.typicode.com/posts")
+let publisher = URLSession.shared.dataTaskPublisher(for: url!)
+    .map { $0.data }
+    .decode(type: [Post].self, decoder: JSONDecoder())
+
+//(2) Subscribe to the publisher with `mapError` Error handling
+let cancellableSink = publisher
+    .retry(2)
+    .mapError{ error -> Error in
+        switch error{
+        case URLError.cannotFindHost:
+            return APIError.networkError(error: error.localizedDescription)
+        default:
+            return APIError.responseError(error: error.localizedDescription)
+        }
+    }
+    .sink(receiveCompletion: {completion in
+        print(String(describing: completion))
+    }, receiveValue: {value in
+        print("returned value \(value)")
+    })
+```
+
+
+
 <h3>2.3 Unit testing and Combine</h3>
+
+```swift
+func testPublisher() {
+        let _ = APIService.getPosts()
+        .sink(receiveCompletion: { error in
+            print("Completed subscription \(String(describing:error))")
+        }, receiveValue: {results in
+            print("Got \(results.count) posts back")
+            XCTAssert(results.count > 0)
+            XCTAssert(results.count == 100,
+                      "We got \(results.count) instead of 100 posts back")
+            XCTAssert(results[0].title == self.expectedTitle,
+                      "We got back the title \(results[0].title) instead of \(self.expectedTitle)")
+        })
+        .store(in: &subscriptions)
+    }
+```
+
+Using several operators in calling to API endpoint:
+
+```swift
+let emptyPost = Post(userId: 0, id: 0, title: "Empty", body: "No Results")
+
+//(1) Create a `dataTaskPublisher`
+let url = URL(string: "https://jsonplaceholder.typicode.com/posts")
+let publisher = URLSession.shared.dataTaskPublisher(for: url!)
+    .map { $0.data }
+    .decode(type: [Post].self, decoder: JSONDecoder())
+    .map{ $0.first }
+    .replaceNil(with: emptyPost)
+    .compactMap({ $0.title })
+
+//(2) Subscribe to the publisher
+let cancellableSink = publisher
+    .sink(receiveCompletion: { completion in
+        print(String(describing: completion))
+    }, receiveValue: { value in
+        print("returned value \(value)")
+    })
+```
 
 
 
